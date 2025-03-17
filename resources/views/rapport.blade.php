@@ -191,23 +191,6 @@
                 </div>
             </div>
         </div>
-
-         {{-- navire etrangers aux Ports --}}
-        <div class="row mt-4">
-            <div class="col-md-6">
-                <div class="card">
-                    <div class="card-header bg-secondary text-white">
-                        <h5>Répartition des navires au Port</h5>
-                    </div>
-                    <div class="card-body">
-                        <canvas id="chartPorts"></canvas>
-                        <button class="btn btn-secondary mt-2" onclick="downloadChart('chartPorts', 'ports_distribution.png')">Télécharger</button>
-                    </div>
-                </div>
-            </div>
-        </div>
-
-        
     </div>
     
     
@@ -428,25 +411,5 @@
         link.download = filename;
         link.click();
     }
-
-        // navire etrangers aux Ports
-    const portLabels = @json(array_keys($portCounts));
-    const portCountsData = @json(array_values($portCounts));
-    new Chart(document.getElementById('chartPorts').getContext('2d'), {
-        type: 'bar',
-        data: {
-            labels: portLabels,
-            datasets: [{
-                label: "TOTAL",
-                backgroundColor: '#9C27B0',
-                data: portCountsData
-            }]
-        },
-        options: {
-            responsive: true,
-            scales: { y: { beginAtZero: true } }
-        }
-    });
-
 </script>
 @endsection

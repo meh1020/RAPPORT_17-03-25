@@ -358,13 +358,14 @@
                 </table>
             </div>
         @else
-            <p>Aucun avis aux navigateurs n'est disponible pour les filtres sélectionnés.</p>
+            <p>RAS</p>
         @endif
     </div>
 
     {{-- ZEE --}}
     <div class="sar-section">
         <h2>3. SUIVI DU TRAFIC MARITIME DANS LA ZEE DE MADAGASCAR</h2>
+        @if(isset($nav_particuliers) && $nav_particuliers->count() > 0)
         <h3>3.1	SUIVI DES NAVIRES PARTICULIERS :</h3>
         <div class="chart-desc"> 
             <div class="table-responsive">
@@ -390,6 +391,9 @@
                     </tbody>
                 </table>
             </div>
+            @else
+                <p>RAS</p>
+            @endif
         </div>
         <h3>3.2 SUIVI DES NAVIRES DANS LES MERS TERRITORIALES</h3>
         <h4 style="margin-left: 35px" class="tsipika">3.2.1 DELIMITATION DES ZONES DE SURVEILLANCE</h4>
@@ -407,41 +411,44 @@
             <br>
         </div>
 
-        <h4 style="margin-left: 35px" class="tsipika">3.2.2 NOMBRES DES NAVIRES PAR ZONES</h4><br>
-        @if(isset($zoneChartUrl) && isset($zoneCounts))
-        <div class="chart-section">
-            <div class="chart-image">
-                <img src="{{ $zoneChartBase64 }}" alt="Graphique Zones">
-            </div>
-            <div class="chart-desc">      
-                <div class="table-responsive">
-                    <table class="table table-bordered table-hover table-striped">
-                        <thead class="table-dark">
-                            <tr>
-                                @foreach($zoneCounts as $zoneName => $count)
-                                    <th>{{ $zoneName }}</th>
-                                @endforeach
-                            </tr>
-                            <tr style="color: darkblue; background-color: white;">
-                                @foreach($zoneCounts as $zoneName => $count)
-                                    <th> {{ $count }}</th>
-                                @endforeach
-                            </tr>
-                        </thead>
-
-                    </table>
+        <h4 style="margin-left: 35px" class="tsipika">3.2.2 NOMBRE DES NAVIRES PAR ZONES</h4><br>
+        @if(isset($zoneChartBase64, $zoneCounts) && is_array($zoneCounts) && count(array_filter($zoneCounts)) > 0)
+            <div class="chart-section">
+                <div class="chart-image">
+                    <img src="{{ $zoneChartBase64 }}" alt="Graphique Zones">
                 </div>
-                <div class="chart-desc">
-                    <p>Tableau 02 : Nombre des navires chaque zone</p>
+                <div class="chart-desc">      
+                    <div class="table-responsive">
+                        <table class="table table-bordered table-hover table-striped">
+                            <thead class="table-dark">
+                                <tr>
+                                    @foreach($zoneCounts as $zoneName => $count)
+                                        <th>{{ $zoneName }}</th>
+                                    @endforeach
+                                </tr>
+                                <tr style="color: darkblue; background-color: white;">
+                                    @foreach($zoneCounts as $zoneName => $count)
+                                        <th>{{ $count }}</th>
+                                    @endforeach
+                                </tr>
+                            </thead>
+                        </table>
+                    </div>
+                    <div class="chart-desc">
+                        <p>Tableau 02 : Nombre des navires par zone</p>
+                    </div>
                 </div>
             </div>
-        </div>
+        @else
+            <p>RAS</p>
         @endif
+
     </div>
 
      <!-- CABOTAGE -->
      <div class="sar-section">
         <h4 style="margin-left: 35px" class="tsipika">3.2.3 RECAPITULATIF SUIVI CABOTAGE</h4>
+        @if(isset($cabotageData) && $cabotageData->count() > 0)
         <div class="chart-desc"> 
             <div class="table-responsive">
                 <table class="table table-bordered table-hover table-striped">
@@ -492,7 +499,7 @@
             <div class="chart-image">
                 <img src="{{ $cabotageBase64 }}" alt="Graphique Zones">
             </div>
-            <div>
+        <div>
                 
                 <p>
                     @php
@@ -502,11 +509,15 @@
                     A titre récapitulatif, ({{ $sumNavires}}) navires de cabotage nationaux ont été enregistrés pour le trimestre {{ $filterResult }} dont : ({{ $ports }}), suivant les e-mails de mouvement des navires reçus.
                 </p>
             </div>
+            @else
+                <p>RAS</p>
+            @endif
     </div>
 
     {{-- Suivie navire étrangers aux ports --}}
     <div class="sar-section">
         <h4 style="margin-left: 35px" class="tsipika">3.2.4 RECAPIULATIF ARRIVEE NAVIRES ETRANGERS</h4>
+        @if(isset($portCounts) && count($portCounts) > 0)
         <div class="chart-image" style="margin-bottom: 30px;">
             <img src="{{ $portChartBase64 }}" alt="Graphique Zones">
         </div>
@@ -558,7 +569,9 @@
                     En somme, {{ $totalGeneral }} navires étrangers ont fait escale dans les ports malagasy dont {{ $descriptionText }}.
                 </p>
             </div>
-        
+            @else
+                <p>RAS</p>
+            @endif
     </div>
 
 
@@ -586,11 +599,9 @@
                     </tbody>
                 </table>
             </div>
-        @else
-            <p>RAS</p>
-        @endif
-    </div>
-    
+            @else
+                <p>RAS</p>
+            @endif
     </div>
 
     <div class="sar-section">
@@ -639,23 +650,26 @@
         <br>
         @endif
 
-            <!-- SECTION 6 : Répartition des navires par Flag -->
-        @if(isset($flagChartUrl) && isset($flagData))
-        <div class="chart-section">
-            <h4>FISHING</h4>
-            <div class="chart-image">
-                <img src="{{ $flagChartBase64 }}" alt="Graphique Flags">
-            </div>
-            <div class="chart-desc">
-                <p>Figure 7 : Tous les bateaux de pêche dans la ZEE</p>
-            </div>
+            <!-- SECTION 6 : Pêche -->
+    @if(isset($flagChartBase64) && isset($flagData))
+    <div class="chart-section">
+        <h4>FISHING</h4>
+        <div class="chart-image">
+            <img src="{{ $flagChartBase64 }}" alt="Graphique Flags">
         </div>
-        @endif
+        <div class="chart-desc">
+            <p>Figure 7 : Tous les bateaux de pêche dans la ZEE</p>
+        </div>
     </div>
+    @else
+        <p>RAS</p>
+    @endif
+
 
      {{-- SECTION : VEDETTE SAR --}}
     <div class="sar-section">
         <h2>4. RECAPITULATIF ACTIVITES VEDETTES SAR</h2>
+        @if(isset($vedettes) && $vedettes->count() > 0)
         <div class="chart-desc"> 
             <div class="table-responsive">
                 <table class="table table-bordered table-hover table-striped">
@@ -690,7 +704,9 @@
                     </tbody>
                 </table>
             </div>
-            
+            @else
+                <p>RAS</p>
+            @endif 
     </div>
     
     
@@ -737,7 +753,7 @@
            
             @endforeach
         @else
-            <p>Aucune donnée de pollution n'est disponible pour les filtres sélectionnés.</p>
+            <p>RAS</p>
         @endif
     </div>
     <div class="sar-section">
