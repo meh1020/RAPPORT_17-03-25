@@ -27,14 +27,15 @@ class RapportController extends Controller
         $pollutionCount = Pollution::count();
         $sitrepCount    = Sitrep::count();
         $bilanSarCount  = BilanSar::count();
-
+    
         // Récupération des paramètres de filtre
-        $dateFilter   = $request->input('filter_date');         // Format : YYYY-MM-DD
-        $yearQuarter  = $request->input('filter_year_quarter'); // Année pour le trimestre
-        $quarter      = $request->input('filter_quarter');      // 1, 2, 3 ou 4
-        $yearMonth    = $request->input('filter_year_month');   // Année pour le mois
-        $month        = $request->input('filter_month');        // Mois (1 à 12)
-
+        $dateFilter      = $request->input('filter_date');         // Format : YYYY-MM-DD
+        $yearQuarter     = $request->input('filter_year_quarter');   // Année pour le trimestre
+        $quarter         = $request->input('filter_quarter');        // 1, 2, 3 ou 4
+        $yearMonth       = $request->input('filter_year_month');     // Année pour le mois
+        $month           = $request->input('filter_month');          // Mois (1 à 12)
+        $filterYear      = $request->input('filter_year');           // Année (filtre annuel)
+    
         // Préparation des dates de début et de fin pour le filtre par trimestre
         if ($yearQuarter && $quarter) {
             switch ($quarter) {
@@ -60,12 +61,11 @@ class RapportController extends Controller
                     break;
             }
         }
-
+    
         /*
          * Pour BilanSar :
          * - Si le champ "date" est renseigné, on filtre sur ce champ.
-         * - Sinon, on filtre sur "created_at".
-         * L'opération est réalisée via COALESCE(`date`, created_at).
+         * - Sinon, on filtre sur "created_at" via COALESCE(`date`, created_at).
          */
         $bilanSarQuery = BilanSar::query();
         if ($dateFilter) {
@@ -74,8 +74,10 @@ class RapportController extends Controller
             $bilanSarQuery->whereRaw("DATE(COALESCE(`date`, created_at)) BETWEEN ? AND ?", [$start, $end]);
         } elseif ($yearMonth && $month) {
             $bilanSarQuery->whereRaw("YEAR(COALESCE(`date`, created_at)) = ? AND MONTH(COALESCE(`date`, created_at)) = ?", [$yearMonth, $month]);
+        } elseif ($filterYear) {
+            $bilanSarQuery->whereRaw("YEAR(COALESCE(`date`, created_at)) = ?", [$filterYear]);
         }
-
+    
         // Types d'événements
         $typesData = (clone $bilanSarQuery)
             ->selectRaw('type_d_evenement_id, COUNT(*) as count')
@@ -88,7 +90,7 @@ class RapportController extends Controller
                     'count' => $item->count,
                 ];
             });
-
+    
         // Causes d'événements
         $causesData = (clone $bilanSarQuery)
             ->selectRaw('cause_de_l_evenement_id, COUNT(*) as count')
@@ -101,7 +103,7 @@ class RapportController extends Controller
                     'count' => $item->count,
                 ];
             });
-
+    
         // Bilans SAR par région
         $regionsData = (clone $bilanSarQuery)
             ->selectRaw('region_id, COUNT(*) as count')
@@ -114,7 +116,7 @@ class RapportController extends Controller
                     'count' => $item->count,
                 ];
             });
-
+    
         // Statistiques SAR
         $bilanStats = (clone $bilanSarQuery)
             ->selectRaw('
@@ -126,7 +128,7 @@ class RapportController extends Controller
                 SUM(evasan) as evasan_total
             ')
             ->first();
-
+    
         /*
          * Pour Peche et les zones, on applique le filtre sur "time_of_fix" (format ISO).
          */
@@ -143,11 +145,13 @@ class RapportController extends Controller
                 } elseif ($yearMonth && $month) {
                     $query->whereYear('time_of_fix', $yearMonth)
                           ->whereMonth('time_of_fix', $month);
+                } elseif ($filterYear) {
+                    $query->whereYear('time_of_fix', $filterYear);
                 }
                 $zoneCounts["Zone $i"] = $query->count();
             }
         }
-
+    
         // Flags (navires de pêche)
         $flagQuery = Peche::query();
         if ($dateFilter) {
@@ -157,6 +161,8 @@ class RapportController extends Controller
         } elseif ($yearMonth && $month) {
             $flagQuery->whereYear('time_of_fix', $yearMonth)
                       ->whereMonth('time_of_fix', $month);
+        } elseif ($filterYear) {
+            $flagQuery->whereYear('time_of_fix', $filterYear);
         }
         $flagData = $flagQuery
             ->selectRaw('flag, COUNT(*) as count')
@@ -168,10 +174,9 @@ class RapportController extends Controller
                     'count' => $item->count,
                 ];
             });
-
+    
+        // Articles (types de navires)
         $shipTypesQuery = Article::query();
-
-        // Appliquer le filtre sur "time_of_fix"
         if ($dateFilter) {
             $shipTypesQuery->whereDate('time_of_fix', $dateFilter);
         } elseif ($yearQuarter && $quarter && isset($start, $end)) {
@@ -179,6 +184,8 @@ class RapportController extends Controller
         } elseif ($yearMonth && $month) {
             $shipTypesQuery->whereYear('time_of_fix', $yearMonth)
                             ->whereMonth('time_of_fix', $month);
+        } elseif ($filterYear) {
+            $shipTypesQuery->whereYear('time_of_fix', $filterYear);
         }
             
         $shipTypesData = $shipTypesQuery
@@ -191,34 +198,35 @@ class RapportController extends Controller
                     'count' => $item->count,
                 ];
             });
-
-            //  AJOUT : Filtrage Cabotage
+    
+        //  AJOUT : Filtrage Cabotage
         // --------------------------------------------
         $cabotageQuery = \App\Models\Cabotage::query();
-        // Filtrage par date (jour, trimestre, mois) sur la colonne 'date'
         if ($dateFilter) {
             $cabotageQuery->whereDate('date', $dateFilter);
         } elseif (isset($start, $end)) {
             $cabotageQuery->whereBetween('date', [$start, $end]);
         } elseif ($yearMonth && $month) {
             $cabotageQuery->whereYear('date', $yearMonth)
-                        ->whereMonth('date', $month);
+                          ->whereMonth('date', $month);
+        } elseif ($filterYear) {
+            $cabotageQuery->whereYear('date', $filterYear);
         }
-
-           //  AJOUT : Filtrage Vedette sar
+    
+        //  AJOUT : Filtrage Vedette sar
         // --------------------------------------------
         $VedetteQuery = \App\Models\Vedette::query();
-
-        // Filtrage par date (jour, trimestre, mois) sur created_at (ou 'date' si vous avez un champ 'date')
         if ($dateFilter) {
             $VedetteQuery->whereDate('date', $dateFilter);
         } elseif (isset($start, $end)) {
             $VedetteQuery->whereBetween('date', [$start, $end]);
         } elseif ($yearMonth && $month) {
             $VedetteQuery->whereYear('date', $yearMonth)
-                        ->whereMonth('date', $month);
+                         ->whereMonth('date', $month);
+        } elseif ($filterYear) {
+            $VedetteQuery->whereYear('date', $filterYear);
         }
-
+    
         // Pour chaque provenance, on compte le nombre de navires distincts et on somme équipage & passagers
         $cabotageData = $cabotageQuery
             ->selectRaw('
@@ -229,9 +237,7 @@ class RapportController extends Controller
             ')
             ->groupBy('provenance')
             ->get();
-
-            
-
+    
         // Construction du texte récapitulatif du filtre
         if ($dateFilter) {
             $filterResult = "Données du " . $dateFilter;
@@ -246,15 +252,14 @@ class RapportController extends Controller
             ];
             $monthName = $months[(int)$month] ?? $month;
             $filterResult = "Données de l'année $yearMonth - mois de $monthName";
+        } elseif ($filterYear) {
+            $filterResult = "Données de l'année $filterYear";
         } else {
             $filterResult = "Toutes les données";
         }
-       
+    
         // Calcul du graphique "Articles par Port"
-
-        // Requête sur les articles en appliquant le filtre sur "time_of_fix"
         $articlesForGraph = Article::query();
-
         if ($dateFilter) {
             $articlesForGraph->whereDate('time_of_fix', $dateFilter);
         } elseif ($yearQuarter && $quarter && isset($start, $end)) {
@@ -262,9 +267,11 @@ class RapportController extends Controller
         } elseif ($yearMonth && $month) {
             $articlesForGraph->whereYear('time_of_fix', $yearMonth)
                             ->whereMonth('time_of_fix', $month);
+        } elseif ($filterYear) {
+            $articlesForGraph->whereYear('time_of_fix', $filterYear);
         }
-
-        // On applique le filtre sur la colonne "destination" en se basant sur les noms dans le modèle Destination
+    
+        // Appliquer le filtre sur la colonne "destination" en se basant sur les noms dans le modèle Destination
         $filtreDestinations = \App\Models\Destination::pluck('name')->toArray();
         $articlesForGraph->where(function ($q) use ($filtreDestinations) {
             foreach ($filtreDestinations as $destination) {
@@ -276,9 +283,9 @@ class RapportController extends Controller
         ->where('ship_type', '!=', 'Tug')
         ->whereNotIn('vessel_name', ['TSARAVATSY', 'AVISOA', 'TS INDIAN OCEAN'])
         ->where('flag', '!=', 'Madagascar');
-
+    
         $articlesForGraph = $articlesForGraph->get();
-
+    
         // Construction du tableau de comptage par port
         $portCounts = [];
         foreach ($articlesForGraph as $article) {
@@ -296,7 +303,7 @@ class RapportController extends Controller
                 }
             }
         }
-
+    
         // Retourne la vue HTML
         return view('rapport', compact(
             'articleCount',
@@ -315,7 +322,7 @@ class RapportController extends Controller
             'cabotageData',
             'portCounts'
         ));
-    }
+    }    
 
     /**
      * Exporte en PDF les mêmes données filtrées.
@@ -325,17 +332,18 @@ class RapportController extends Controller
         // Augmenter le temps d'exécution et la mémoire si nécessaire
         ini_set('max_execution_time', 300);
         ini_set('memory_limit', '512M');
-    
+
         // Récupération des filtres
         $dateFilter   = $request->input('filter_date');
         $yearQuarter  = $request->input('filter_year_quarter');
         $quarter      = $request->input('filter_quarter');
         $yearMonth    = $request->input('filter_year_month');
         $month        = $request->input('filter_month');
-    
+        $filterYear   = $request->input('filter_year'); // Ajout du filtre annuel
+
         // Détermination de la plage de dates pour le trimestre
         $start = null;
-        $end = null;
+        $end   = null;
         if ($yearQuarter && $quarter) {
             switch ($quarter) {
                 case 1:
@@ -359,7 +367,7 @@ class RapportController extends Controller
                     $end   = null;
             }
         }
-    
+
         // Construction de la requête filtrée pour BilanSar
         $bilanSarQuery = BilanSar::query();
         if ($dateFilter) {
@@ -368,20 +376,22 @@ class RapportController extends Controller
             $bilanSarQuery->whereRaw("DATE(COALESCE(`date`, created_at)) BETWEEN ? AND ?", [$start, $end]);
         } elseif ($yearMonth && $month) {
             $bilanSarQuery->whereRaw("YEAR(COALESCE(`date`, created_at)) = ? AND MONTH(COALESCE(`date`, created_at)) = ?", [$yearMonth, $month]);
+        } elseif ($filterYear) {
+            $bilanSarQuery->whereRaw("YEAR(COALESCE(`date`, created_at)) = ?", [$filterYear]);
         }
-    
+
         // Construction d'une clé de cache basée sur l'URL complète des filtres
         $cacheKey = 'rapport_pdf_data_' . md5($request->fullUrl());
-    
+
         // Mettre en cache les données pendant 10 minutes
-        $data = Cache::remember($cacheKey, now()->addMinutes(10), function() use ($bilanSarQuery, $request, $dateFilter, $yearQuarter, $quarter, $yearMonth, $month, $start, $end) {
-    
+        $data = Cache::remember($cacheKey, now()->addMinutes(10), function() use ($bilanSarQuery, $request, $dateFilter, $yearQuarter, $quarter, $yearMonth, $month, $filterYear, $start, $end) {
+
             // Palette de couleurs commune aux graphiques
             $colorsPalette = [
                 '#4CAF50', '#2196F3', '#FF9800', '#F44336', '#9C27B0',
                 '#795548', '#E91E63', '#00BCD4', '#FFEB3B', '#009688'
             ];
-    
+
             // 1. Graphique : Types d'événements
             $typesData = (clone $bilanSarQuery)
                 ->selectRaw('type_d_evenement_id, COUNT(*) as count')
@@ -396,11 +406,11 @@ class RapportController extends Controller
                 });
             $typesLabels = $typesData->pluck('name')->toArray();
             $typesCounts = $typesData->pluck('count')->toArray();
-            $nbBars = count($typesCounts);
-            $colorsUsed = array_slice($colorsPalette, 0, $nbBars);
+            $nbBars      = count($typesCounts);
+            $colorsUsed  = array_slice($colorsPalette, 0, $nbBars);
             $typesChartConfig = [
-                'type' => 'bar',
-                'data' => [
+                'type'    => 'bar',
+                'data'    => [
                     'labels'   => $typesLabels,
                     'datasets' => [[
                         'data'            => $typesCounts,
@@ -410,14 +420,14 @@ class RapportController extends Controller
                 'options' => [
                     'scales' => [
                         'y' => [
-                            'type'       => 'linear',
-                            'min'        => 0,
-                            'ticks'      => ['beginAtZero' => true]
+                            'type'  => 'linear',
+                            'min'   => 0,
+                            'ticks' => ['beginAtZero' => true]
                         ]
                     ]
                 ]
             ];
-    
+
             // 2. Graphique : Causes d'événements
             $causesData = (clone $bilanSarQuery)
                 ->selectRaw('cause_de_l_evenement_id, COUNT(*) as count')
@@ -432,11 +442,11 @@ class RapportController extends Controller
                 });
             $causesLabels = $causesData->pluck('name')->toArray();
             $causesCounts = $causesData->pluck('count')->toArray();
-            $nbBars = count($causesCounts);
-            $colorsUsed = array_slice($colorsPalette, 0, $nbBars);
+            $nbBars       = count($causesCounts);
+            $colorsUsed   = array_slice($colorsPalette, 0, $nbBars);
             $causesChartConfig = [
-                'type' => 'bar',
-                'data' => [
+                'type'    => 'bar',
+                'data'    => [
                     'labels'   => $causesLabels,
                     'datasets' => [[
                         'label'           => "Nombre d'événements (Causes)",
@@ -446,16 +456,16 @@ class RapportController extends Controller
                 ],
                 'options' => [
                     'responsive' => true,
-                    'scales' => [
+                    'scales'   => [
                         'y' => [
-                            'type'       => 'linear',
-                            'min'        => 0,
-                            'ticks'      => ['beginAtZero' => true, 'stepSize' => 1]
+                            'type'  => 'linear',
+                            'min'   => 0,
+                            'ticks' => ['beginAtZero' => true, 'stepSize' => 1]
                         ]
                     ]
                 ]
             ];
-    
+
             // 3. Graphique : Répartition par Région
             $regionsData = (clone $bilanSarQuery)
                 ->selectRaw('region_id, COUNT(*) as count')
@@ -470,11 +480,11 @@ class RapportController extends Controller
                 });
             $regionsLabels = $regionsData->pluck('name')->toArray();
             $regionsCounts = $regionsData->pluck('count')->toArray();
-            $nbBars = count($regionsCounts);
-            $colorsUsed = array_slice($colorsPalette, 0, $nbBars);
+            $nbBars        = count($regionsCounts);
+            $colorsUsed    = array_slice($colorsPalette, 0, $nbBars);
             $regionsChartConfig = [
-                'type' => 'bar',
-                'data' => [
+                'type'    => 'bar',
+                'data'    => [
                     'labels'   => $regionsLabels,
                     'datasets' => [[
                         'label'           => "Nombre de bilans SAR (Régions)",
@@ -491,7 +501,7 @@ class RapportController extends Controller
                     ]
                 ]
             ];
-    
+
             // 4. Graphique : Statistiques des Bilans SAR
             $bilanStats = (clone $bilanSarQuery)
                 ->selectRaw('
@@ -513,8 +523,8 @@ class RapportController extends Controller
                 $bilanStats->evasan_total ?? 0,
             ];
             $bilanChartConfig = [
-                'type' => 'bar',
-                'data' => [
+                'type'    => 'bar',
+                'data'    => [
                     'labels'   => $bilanLabels,
                     'datasets' => [[
                         'label'           => 'Statistiques des Bilans SAR',
@@ -531,7 +541,7 @@ class RapportController extends Controller
                     ]
                 ]
             ];
-    
+
             // 5. Graphique : Nombre d'entrées par Zone
             $zoneCounts = [];
             for ($i = 1; $i <= 9; $i++) {
@@ -544,7 +554,9 @@ class RapportController extends Controller
                         $query->whereBetween('time_of_fix', [$start, $end]);
                     } elseif ($yearMonth && $month) {
                         $query->whereYear('time_of_fix', $yearMonth)
-                              ->whereMonth('time_of_fix', $month);
+                            ->whereMonth('time_of_fix', $month);
+                    } elseif ($filterYear) {
+                        $query->whereYear('time_of_fix', $filterYear);
                     }
                     $zoneCounts["Zone $i"] = $query->count();
                 }
@@ -552,8 +564,8 @@ class RapportController extends Controller
             $zoneLabels = array_keys($zoneCounts);
             $zoneValues = array_values($zoneCounts);
             $zoneChartConfig = [
-                'type' => 'bar',
-                'data' => [
+                'type'    => 'bar',
+                'data'    => [
                     'labels'   => $zoneLabels,
                     'datasets' => [[
                         'label'           => "Nombre d'entrées par zone",
@@ -570,7 +582,7 @@ class RapportController extends Controller
                     ]
                 ]
             ];
-    
+
             // 6. Graphique : Flags (navires de pêche)
             $flagQuery = Peche::query();
             if ($dateFilter) {
@@ -579,7 +591,9 @@ class RapportController extends Controller
                 $flagQuery->whereBetween('time_of_fix', [$start, $end]);
             } elseif ($yearMonth && $month) {
                 $flagQuery->whereYear('time_of_fix', $yearMonth)
-                          ->whereMonth('time_of_fix', $month);
+                        ->whereMonth('time_of_fix', $month);
+            } elseif ($filterYear) {
+                $flagQuery->whereYear('time_of_fix', $filterYear);
             }
             $flagData = $flagQuery
                 ->selectRaw('flag, COUNT(*) as count')
@@ -594,8 +608,8 @@ class RapportController extends Controller
             $flagLabels = $flagData->pluck('name')->toArray();
             $flagCounts = $flagData->pluck('count')->toArray();
             $flagChartConfig = [
-                'type' => 'bar',
-                'data' => [
+                'type'    => 'bar',
+                'data'    => [
                     'labels'   => $flagLabels,
                     'datasets' => [[
                         'label'           => 'Nombre de navires',
@@ -604,7 +618,7 @@ class RapportController extends Controller
                     ]]
                 ]
             ];
-    
+
             // 7. Graphique : ZEE RECAP – Ship Types
             $shipTypesQuery = Article::query();
             if ($dateFilter) {
@@ -613,7 +627,9 @@ class RapportController extends Controller
                 $shipTypesQuery->whereBetween('time_of_fix', [$start, $end]);
             } elseif ($yearMonth && $month) {
                 $shipTypesQuery->whereYear('time_of_fix', $yearMonth)
-                               ->whereMonth('time_of_fix', $month);
+                                ->whereMonth('time_of_fix', $month);
+            } elseif ($filterYear) {
+                $shipTypesQuery->whereYear('time_of_fix', $filterYear);
             }
             $shipTypesData = $shipTypesQuery
                 ->selectRaw('ship_type, COUNT(*) as count')
@@ -627,7 +643,7 @@ class RapportController extends Controller
                 });
             $shipTypesLabels = $shipTypesData->pluck('name')->toArray();
             $shipTypesCounts = $shipTypesData->pluck('count')->toArray();
-            $topShipTypes = $shipTypesData->sortByDesc('count')->values()->take(3)->toArray();
+            $topShipTypes    = $shipTypesData->sortByDesc('count')->values()->take(3)->toArray();
             $topShipTypesFlags = [];
             foreach ($topShipTypes as $shipTypeItem) {
                 $flagRecord = \App\Models\Article::where('ship_type', $shipTypeItem['name'])
@@ -638,8 +654,8 @@ class RapportController extends Controller
                 $topShipTypesFlags[] = $flagRecord ? $flagRecord->flag : 'Inconnu';
             }
             $shipTypesChartConfig = [
-                'type' => 'bar',
-                'data' => [
+                'type'    => 'bar',
+                'data'    => [
                     'labels'   => $shipTypesLabels,
                     'datasets' => [[
                         'label'           => 'Nombre de navires par Ship Type',
@@ -657,8 +673,8 @@ class RapportController extends Controller
                 ]
             ];
 
+            // 8. Graphique : Cabotage
             $cabotageQuery = \App\Models\Cabotage::query();
-            // Filtrage par date (jour, trimestre, mois) sur created_at (ou 'date' si vous avez un champ 'date')
             if ($dateFilter) {
                 $cabotageQuery->whereDate('date', $dateFilter);
             } elseif (isset($start, $end)) {
@@ -666,9 +682,9 @@ class RapportController extends Controller
             } elseif ($yearMonth && $month) {
                 $cabotageQuery->whereYear('date', $yearMonth)
                             ->whereMonth('date', $month);
+            } elseif ($filterYear) {
+                $cabotageQuery->whereYear('date', $filterYear);
             }
-    
-            // Pour chaque provenance, on compte le nombre de navires distincts et on somme équipage & passagers
             $cabotageData = $cabotageQuery
                 ->selectRaw('
                     provenance,
@@ -678,17 +694,14 @@ class RapportController extends Controller
                 ')
                 ->groupBy('provenance')
                 ->get();
-             // Préparation des données pour le graphique
             $labels = $cabotageData->pluck('provenance')->toArray();
             $totalNavires   = $cabotageData->pluck('total_navires')->toArray();
             $totalEquipage  = $cabotageData->pluck('total_equipage')->toArray();
             $totalPassagers = $cabotageData->pluck('total_passagers')->toArray();
-
-            // Construction de la configuration du graphique (ici un graphique en barres)
-            $cabotageChartConfig= [
-                "type" => "bar",
-                "data" => [
-                    "labels" => $labels,
+            $cabotageChartConfig = [
+                "type"    => "bar",
+                "data"    => [
+                    "labels"   => $labels,
                     "datasets" => [
                         [
                             "label"           => "Total Navires",
@@ -726,7 +739,7 @@ class RapportController extends Controller
                 ],
             ];
 
-            // 8. AJOUT : Graphique : Articles par Port
+            // 9. Graphique : Articles par Port
             $articlesForGraph = Article::query();
             if ($dateFilter) {
                 $articlesForGraph->whereDate('time_of_fix', $dateFilter);
@@ -735,6 +748,8 @@ class RapportController extends Controller
             } elseif ($yearMonth && $month) {
                 $articlesForGraph->whereYear('time_of_fix', $yearMonth)
                                 ->whereMonth('time_of_fix', $month);
+            } elseif ($filterYear) {
+                $articlesForGraph->whereYear('time_of_fix', $filterYear);
             }
             // Filtrage sur la colonne "destination" en se basant sur le modèle Destination
             $filtreDestinations = \App\Models\Destination::pluck('name')->toArray();
@@ -747,7 +762,6 @@ class RapportController extends Controller
             ->where('ship_type', '!=', 'Tug')
             ->whereNotIn('vessel_name', ['TSARAVATSY', 'AVISOA', 'TS INDIAN OCEAN'])
             ->where('flag', '!=', 'Madagascar');
-
             $articlesForGraph = $articlesForGraph->get();
 
             $portCounts = [];
@@ -767,9 +781,9 @@ class RapportController extends Controller
             $portLabels = array_keys($portCounts);
             $portValues = array_values($portCounts);
             $portChartConfig = [
-                'type' => 'bar',
-                'data' => [
-                    'labels' => $portLabels,
+                'type'    => 'bar',
+                'data'    => [
+                    'labels'   => $portLabels,
                     'datasets' => [[
                         'label'           => "Nombre d'articles par Port",
                         'data'            => $portValues,
@@ -785,10 +799,8 @@ class RapportController extends Controller
                 ]
             ];
 
-            //Filtrage Vedette sar
+            // 10. Filtrage Vedette SAR
             $VedetteQuery = \App\Models\Vedette::query();
-
-            // Filtrage par date (jour, trimestre, mois) sur created_at (ou 'date' si vous avez un champ 'date')
             if ($dateFilter) {
                 $VedetteQuery->whereDate('date', $dateFilter);
             } elseif (isset($start, $end)) {
@@ -796,25 +808,39 @@ class RapportController extends Controller
             } elseif ($yearMonth && $month) {
                 $VedetteQuery->whereYear('date', $yearMonth)
                             ->whereMonth('date', $month);
+            } elseif ($filterYear) {
+                $VedetteQuery->whereYear('date', $filterYear);
             }
             $Vedettes = $VedetteQuery->get();
 
-            //Filtrage Suivie navire particulier 
+            // 11. Filtrage Suivi Navire Particulier
             $nav_particulierQuery = \App\Models\SuiviNavireParticulier::query();
-
-            // Filtrage par date (jour, trimestre, mois) sur created_at (ou 'date' si vous avez un champ 'date')
             if ($dateFilter) {
                 $nav_particulierQuery->whereDate('date', $dateFilter);
             } elseif (isset($start, $end)) {
                 $nav_particulierQuery->whereBetween('date', [$start, $end]);
             } elseif ($yearMonth && $month) {
                 $nav_particulierQuery->whereYear('date', $yearMonth)
-                            ->whereMonth('date', $month);
+                                    ->whereMonth('date', $month);
+            } elseif ($filterYear) {
+                $nav_particulierQuery->whereYear('date', $filterYear);
             }
             $nav_particuliers = $nav_particulierQuery->get();
-    
-        
-    
+
+            // 12. Passage Inoffensif
+            $passageInoffensifQuery = \App\Models\PassageInoffensif::query();
+            if ($dateFilter) {
+                $passageInoffensifQuery->whereDate('date_entree', $dateFilter);
+            } elseif ($yearQuarter && $quarter && isset($start, $end)) {
+                $passageInoffensifQuery->whereBetween('date_entree', [$start, $end]);
+            } elseif ($yearMonth && $month) {
+                $passageInoffensifQuery->whereYear('date_entree', $yearMonth)
+                                    ->whereMonth('date_entree', $month);
+            } elseif ($filterYear) {
+                $passageInoffensifQuery->whereYear('date_entree', $filterYear);
+            }
+            $passageInoffensifs = $passageInoffensifQuery->get();
+
             // Construction des URLs pour chaque graphique
             $typesChartUrl     = 'https://quickchart.io/chart?width=500&height=200&version=3&c=' . urlencode(json_encode($typesChartConfig));
             $causesChartUrl    = 'https://quickchart.io/chart?width=500&height=200&version=3&c=' . urlencode(json_encode($causesChartConfig));
@@ -823,10 +849,9 @@ class RapportController extends Controller
             $zoneChartUrl      = 'https://quickchart.io/chart?width=450&height=200&version=3&c=' . urlencode(json_encode($zoneChartConfig));
             $flagChartUrl      = 'https://quickchart.io/chart?width=450&height=200&version=3&c=' . urlencode(json_encode($flagChartConfig));
             $shipTypesChartUrl = 'https://quickchart.io/chart?width=500&height=300&version=3&c=' . urlencode(json_encode($shipTypesChartConfig));
-            $cabotadeChartUrl  =  'https://quickchart.io/chart?width=500&height=300&version=3&c=' . urlencode(json_encode($cabotageChartConfig));
-            $portChartUrl      =  'https://quickchart.io/chart?width=500&height=300&version=3&c=' . urlencode(json_encode($portChartConfig ));
-    
-    
+            $cabotadeChartUrl  = 'https://quickchart.io/chart?width=500&height=300&version=3&c=' . urlencode(json_encode($cabotageChartConfig));
+            $portChartUrl      = 'https://quickchart.io/chart?width=500&height=300&version=3&c=' . urlencode(json_encode($portChartConfig));
+
             // Appels HTTP asynchrones pour récupérer les images de graphiques
             $client = new \GuzzleHttp\Client(['verify' => false]);
             $promises = [
@@ -838,11 +863,10 @@ class RapportController extends Controller
                 'flagChartImage'      => $client->getAsync($flagChartUrl),
                 'shipTypesChartImage' => $client->getAsync($shipTypesChartUrl),
                 'cabotageChartImage'  => $client->getAsync($cabotadeChartUrl),
-                'portChartImage'      => $client->getAsync($portChartUrl) 
+                'portChartImage'      => $client->getAsync($portChartUrl)
             ];
-            // Utilisation de Utils::unwrap() pour résoudre les promesses
             $results = \GuzzleHttp\Promise\Utils::unwrap($promises);
-    
+
             // Conversion des images en base64
             $typesChartBase64     = 'data:image/png;base64,' . base64_encode($results['typesChartImage']->getBody()->getContents());
             $causesChartBase64    = 'data:image/png;base64,' . base64_encode($results['causesChartImage']->getBody()->getContents());
@@ -854,7 +878,6 @@ class RapportController extends Controller
             $cabotageBase64       = 'data:image/png;base64,' . base64_encode($results['cabotageChartImage']->getBody()->getContents());
             $portChartBase64      = 'data:image/png;base64,' . base64_encode($results['portChartImage']->getBody()->getContents());
 
-    
             // Récupération des données pour Avurnav et Pollution
             $avurnavQuery = \App\Models\Avurnav::query();
             $pollutionQuery = \App\Models\Pollution::query();
@@ -866,14 +889,17 @@ class RapportController extends Controller
                 $pollutionQuery->whereBetween('date', [$start, $end]);
             } elseif ($yearMonth && $month) {
                 $avurnavQuery->whereYear('date', $yearMonth)
-                             ->whereMonth('date', $month);
+                            ->whereMonth('date', $month);
                 $pollutionQuery->whereYear('date', $yearMonth)
-                               ->whereMonth('date', $month);
+                            ->whereMonth('date', $month);
+            } elseif ($filterYear) {
+                $avurnavQuery->whereYear('date', $filterYear);
+                $pollutionQuery->whereYear('date', $filterYear);
             }
-            $avurnavs = $avurnavQuery->get();
+            $avurnavs   = $avurnavQuery->get();
             $pollutions = $pollutionQuery->get();
-    
-            // Construction du texte récapitulatif du filtre
+
+           // Construction du texte récapitulatif du filtre
             if ($dateFilter) {
                 $filterResult = " " . $dateFilter;
             } elseif ($yearQuarter && $quarter) {
@@ -888,22 +914,8 @@ class RapportController extends Controller
                 $monthName = $months[(int)$month] ?? $month;
                 $filterResult = "année $yearMonth - mois de $monthName";
             } else {
-                $filterResult = "Toutes les données";
+                $filterResult = "année " . $filterYear;
             }
-
-           
-
-             // Récupération des données pour PassageInoffensif
-             $passageInoffensifQuery = \App\Models\PassageInoffensif::query();
-             if ($dateFilter) {
-                 $passageInoffensifQuery->whereDate('date_entree', $dateFilter);
-             } elseif ($yearQuarter && $quarter && isset($start, $end)) {
-                 $passageInoffensifQuery->whereBetween('date_entree', [$start, $end]);
-             } elseif ($yearMonth && $month) {
-                 $passageInoffensifQuery->whereYear('date_entree', $yearMonth)
-                                     ->whereMonth('date_entree', $month);
-             }
-             $passageInoffensifs = $passageInoffensifQuery->get();
 
 
             return [
@@ -936,24 +948,21 @@ class RapportController extends Controller
                 'cabotageData'         => $cabotageData,
                 'cabotageBase64'       => $cabotageBase64,
                 'vedettes'             => $Vedettes,
-                'passageInoffensifs'   =>   $passageInoffensifs,
+                'passageInoffensifs'   => $passageInoffensifs,
                 'nav_particuliers'     => $nav_particuliers,
-                // AJOUT : Données du graphique Articles par Port
                 'portChartUrl'         => $portChartUrl,
                 'portChartBase64'      => $portChartBase64,
                 'portCounts'           => $portCounts,
             ];
         });
-    
+
         // Génération du PDF en activant les images distantes
         $pdf = PDF::loadView('rapport_pdf', $data)
             ->setOptions([
                 'isRemoteEnabled'      => true,
                 'isHtml5ParserEnabled' => true,
             ]);
-    
+
         return $pdf->download('rapport_' . $data['filterResult'] . '.pdf');
     }
-    
-
-}  
+}

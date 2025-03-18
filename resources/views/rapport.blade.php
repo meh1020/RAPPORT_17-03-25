@@ -70,6 +70,19 @@
                     </div>
                 </div>
 
+                <!-- Filtrer par année -->
+                <div class="row mt-3">
+                    <div class="col-md-4">
+                        <label for="filter_year">Filtrer par année</label>
+                        <select name="filter_year" id="filter_year" class="form-control">
+                            <option value="">Année</option>
+                            @for ($y = date('Y'); $y >= 2000; $y--)
+                                <option value="{{ $y }}" {{ request('filter_year') == $y ? 'selected' : '' }}>{{ $y }}</option>
+                            @endfor
+                        </select>
+                    </div>
+                </div>
+
                 <div class="row mt-3">
                     <div class="col-md-12">
                         <button type="submit" class="btn btn-primary">Appliquer les filtres</button>
@@ -191,10 +204,22 @@
                 </div>
             </div>
         </div>
+
+        <div class="row mt-4">
+            <div class="col-md-6">
+                <div class="card">
+                    <div class="card-header bg-secondary text-white">
+                        <h5>Répartition des navires au Port</h5>
+                    </div>
+                    <div class="card-body">
+                        <canvas id="chartPorts"></canvas>
+                        <button class="btn btn-secondary mt-2" onclick="downloadChart('chartPorts', 'ports_distribution.png')">Télécharger</button>
+                    </div>
+                </div>
+            </div>
+        </div>
+
     </div>
-    
-    
-    
 </div>
     
 </div>
@@ -334,7 +359,7 @@
             }
         }
     });
-    //chart ZEE
+    // Chart Ship Types
     const shipTypeLabels = @json($shipTypesData->pluck('name'));
     const shipTypeCounts = @json($shipTypesData->pluck('count'));
 
@@ -358,7 +383,7 @@
         }
     });
 
-    // Récupération des données depuis le contrôleur
+    // Récupération des données depuis le contrôleur pour le graphique Cabotage
     const cabotageData = @json($cabotageData);
 
     // Extraire les labels (provenances)
@@ -369,7 +394,7 @@
     const equipageData   = cabotageData.map(item => item.total_equipage);
     const passagersData  = cabotageData.map(item => item.total_passagers);
 
-    // Créer le graphique
+    // Créer le graphique Cabotage
     new Chart(document.getElementById('cabotageChart').getContext('2d'), {
         type: 'bar',
         data: {
@@ -403,7 +428,7 @@
         }
     });
 
-    // Fonction de téléchargement (si vous l'avez déjà, pas besoin de la dupliquer)
+    // Fonction de téléchargement (déjà présente en début de script)
     function downloadChart(chartId, filename) {
         const canvas = document.getElementById(chartId);
         const link = document.createElement('a');
@@ -411,5 +436,24 @@
         link.download = filename;
         link.click();
     }
+
+     // navire etrangers aux Ports
+     const portLabels = @json(array_keys($portCounts));
+    const portCountsData = @json(array_values($portCounts));
+    new Chart(document.getElementById('chartPorts').getContext('2d'), {
+        type: 'bar',
+        data: {
+            labels: portLabels,
+            datasets: [{
+                label: "TOTAL",
+                backgroundColor: '#9C27B0',
+                data: portCountsData
+            }]
+        },
+        options: {
+            responsive: true,
+            scales: { y: { beginAtZero: true } }
+        }
+    });
 </script>
 @endsection
